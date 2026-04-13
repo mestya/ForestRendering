@@ -34,6 +34,11 @@ enabled the individual components found in the figure below.
 You will also need to install Git_; you can leave all options to their default
 values during the installation.
 
+.. note::
+   If you plan to build the Vulkan executable (``ForestSceneVK``), install the
+   Vulkan SDK (LunarG) as well so that CMake's ``find_package(Vulkan)`` can
+   locate it.
+
 In case you decided not to use Visual Studio 2019 (nor 2017), you will
 additionally need to install CMake_.
 
@@ -60,6 +65,10 @@ is done, you will need to run in a terminal ``xcode-select --install`` to get
 the command line tools installed.
 
 You will additionally need to install CMake_.
+
+.. note::
+   If you plan to build the Vulkan executable (``ForestSceneVK``), install a
+   Vulkan SDK that includes MoltenVK.
 
 Once you open the project file in Xcode, switch Scheme to EDAF80_Assignment1, under the Product directory.
 

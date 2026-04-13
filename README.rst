@@ -30,6 +30,12 @@ CG_Labs uses the following dependencies:
 * tinyfiledialogs_ (>= 3.1.2): to display dialogue windows to the user, in case
   of errors for example.
 
+Vulkan (experimental)
+---------------------
+
+This branch also contains a Vulkan framework executable ``ForestSceneVK`` (see
+``VULKAN.md``) which requires a Vulkan SDK / loader on your system.
+
 The project contains the needed files for GLAD and Dear ImGui, and it will
 download assimp, GLM, GLFW, stb and tinyfiledialogs if they are not found on
 your computer, so you only need to make sure that CMake and Git are installed

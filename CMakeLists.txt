@@ -28,7 +28,7 @@ set_property (CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPE
 # ------------------------------------------------------------------------------
 find_package (Git REQUIRED)
 include (FetchContent)
-set (FETCHCONTENT_BASE_DIR "${PROJECT_SOURCE_DIR}/dependencies" CACHE PATH "Dependencies folder" FORCE)
+set (FETCHCONTENT_BASE_DIR "${PROJECT_BINARY_DIR}/dependencies" CACHE PATH "Dependencies folder" FORCE)
 if (NOT EXISTS "${FETCHCONTENT_BASE_DIR}")
     file (MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
 endif ()
@@ -57,7 +57,9 @@ target_include_directories(glm INTERFACE ${GLM_ROOT})
 # --- 其他小工具 ---
 include (CMake/InstallTinyFileDialogs.cmake)
 include (CMake/InstallSTB.cmake)
-include (CMake/RetrieveResourceArchive.cmake)
+if (NOT EXISTS "${CMAKE_SOURCE_DIR}/res")
+    include (CMake/RetrieveResourceArchive.cmake)
+endif ()
 
 # ------------------------------------------------------------------------------
 # 3. 配置文件
@@ -143,6 +145,37 @@ target_link_libraries(ForestScene
 # 7. 资源复制
 # ------------------------------------------------------------------------------
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/res DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+set(FORESTSCENE_RES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/res")
+if (NOT EXISTS "${FORESTSCENE_RES_DIR}")
+    set(FORESTSCENE_RES_DIR "${FETCHCONTENT_BASE_DIR}/resources")
+endif ()
+file(COPY ${FORESTSCENE_RES_DIR} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 message(STATUS "ForestScene setup done.")
+
+# ------------------------------------------------------------------------------
+# 8. Vulkan 版本 (框架搭建阶段)
+# ------------------------------------------------------------------------------
+option(FORESTSCENE_ENABLE_VULKAN "Build Vulkan framework executable" ON)
+if (FORESTSCENE_ENABLE_VULKAN)
+    find_package(Vulkan REQUIRED)
+
+    add_executable(ForestSceneVK
+        "src/main_vk.cpp"
+        "src/vulkan/App.cpp"
+        "src/vulkan/App.hpp"
+        "src/vulkan/Context.cpp"
+        "src/vulkan/Context.hpp"
+        "src/vulkan/vk_common.hpp"
+    )
+
+    target_link_libraries(ForestSceneVK
+        PRIVATE
+            CG_Labs_options
+            glfw
+            Vulkan::Vulkan
+    )
+
+    target_compile_definitions(ForestSceneVK PRIVATE GLFW_INCLUDE_NONE)
+    target_compile_features(ForestSceneVK PRIVATE cxx_std_17)
+endif ()

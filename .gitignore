@@ -23,3 +23,7 @@ log.txt
 *.sdf
 *.suo
 *.vcxproj.user
+
+# macOS
+.DS_Store
+**/.DS_Store
