@@ -61,7 +61,7 @@ void main() {
   model_pos.y += heightOffset + 4.0;
   float id = float(gl_InstanceID);
   // --- 1. Lifecycle Management ---
-  float leafLifeSpan = 50.0;
+  float leafLifeSpan = 25.0;
   // By using time offset,
   // leaves with different IDs are generated at different times.
   float birthTime = id * 0.5;

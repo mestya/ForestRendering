@@ -1,3 +1,4 @@
+https://www.youtube.com/watch?v=xsgsFCvjS44
 |UbuntuBadge| |MacOSBadge| |WindowsBadge|
 
 .. |UbuntuBadge| image:: https://github.com/LUGGPublic/CG_Labs/actions/workflows/ubuntu.yml/badge.svg

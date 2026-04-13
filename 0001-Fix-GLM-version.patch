@@ -18,8 +18,8 @@ index 10bb1af..1a49412 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
- cmake_minimum_required(VERSION 3.2 FATAL_ERROR)
- cmake_policy(VERSION 3.2)
+ cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
+ cmake_policy(VERSION 3.10)
  
 -set(GLM_VERSION "0.9.9")
 +set(GLM_VERSION "0.9.9.5")

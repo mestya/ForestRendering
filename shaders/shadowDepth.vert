@@ -98,7 +98,7 @@ void applyWind(inout vec3 localPos, inout vec3 localNormal,
     float wave = sin(time * 3.0 + seed + localPos.x * 2.0);
     float bend = pow(max(0.0, localPos.y), 1.5);
 
-    float displacement = wave * bend * 0.5 * windPower;
+    float displacement = wave * bend * 1.8 * windPower;
     localPos.x += displacement;
     localPos.z += displacement * 0.5;
     break;
@@ -147,7 +147,7 @@ void main() {
   float heightOffset = 1.0 * (wave1 + wave2);
   world_pos.y += heightOffset;
   if (lables == 3) {
-    world_pos.y = -world_pos.y;
+    world_pos.y = world_pos.y + 5.0;
   }
   if (lables == 1 || lables == 2) {
     world_pos.y += 3.0;

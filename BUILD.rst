@@ -49,6 +49,8 @@ additionally need to install CMake_.
    Excerpt from the component selection screen of Visual Studio 2019; the
    required components have their checkbox ticked.
 
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Release
 
 On macOS
 --------

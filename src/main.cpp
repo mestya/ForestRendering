@@ -4,10 +4,21 @@
 #include "core/WindowManager.hpp"
 #include <chrono>
 #include <cstdlib>
+#include "vk_main.hpp"
 
 using namespace std::literals::chrono_literals;
 
 int main() {
+#if BUILD_VULKAN
+    try {
+    return RunVkTriangleApp();
+  } catch (std::exception const &e) {
+    std::cerr << "Vulkan app failed: " << e.what() << std::endl;
+  } catch (...) {
+    std::cerr << "Vulkan app failed: unknown error" << std::endl;
+  }
+  return EXIT_FAILURE;
+#else
   Bonobo framework;
   WindowManager &window_manager = framework.GetWindowManager();
 
@@ -65,4 +76,5 @@ int main() {
 
   bonobo::deinit();
   return EXIT_SUCCESS;
+#endif
 }

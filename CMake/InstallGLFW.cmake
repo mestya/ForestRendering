@@ -7,11 +7,15 @@ if (NOT glfw3_FOUND)
 		GIT_SHALLOW ON
 	)
 
+
 	FetchContent_GetProperties (glfw)
 	if (NOT glfw_POPULATED)
 		message (STATUS "Cloning glfw…")
 		FetchContent_Populate (glfw)
 	endif ()
+
+	include (cmake/patch.cmake)
+	force_update_cmake_version("${FETCHCONTENT_BASE_DIR}/glfw-src")
 
 	set (glfw_INSTALL_DIR "${FETCHCONTENT_BASE_DIR}/glfw-install")
 	if (NOT EXISTS "${glfw_INSTALL_DIR}")

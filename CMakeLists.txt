@@ -1,143 +1,294 @@
-cmake_minimum_required (VERSION 3.13)
+﻿cmake_minimum_required (VERSION 3.10)
 
-# ------------------------------------------------------------------------------
-# 1. 基础环境
-# ------------------------------------------------------------------------------
+# Workaround for the lab computers
 if (WIN32)
-    set (LUGGCGL_TMP_DIR ${CMAKE_SOURCE_DIR}/../Temp)
-    if (NOT EXISTS ${LUGGCGL_TMP_DIR})
-        file (MAKE_DIRECTORY ${LUGGCGL_TMP_DIR})
-    endif ()
-    set (ENV{TMP} ${LUGGCGL_TMP_DIR})
+	set (LUGGCGL_TMP_DIR ${CMAKE_SOURCE_DIR}/../Temp)
+	if (NOT EXISTS ${LUGGCGL_TMP_DIR})
+		file (MAKE_DIRECTORY ${LUGGCGL_TMP_DIR})
+	endif ()
+	set (ENV{TMP} ${LUGGCGL_TMP_DIR})
 endif ()
 
+
+# Rendering backend build switch.
+# OPENGL: build only OpenGL executable
+# VULKAN: build only Vulkan executable
+# BOTH:   build both executables
+set (RENDER_BACKEND "BOTH" CACHE STRING "Rendering backend to build: OPENGL, VULKAN, BOTH")
+set_property (CACHE RENDER_BACKEND PROPERTY STRINGS OPENGL VULKAN BOTH)
+
+string (TOUPPER "${RENDER_BACKEND}" RENDER_BACKEND)
+if (NOT RENDER_BACKEND STREQUAL "OPENGL" AND NOT RENDER_BACKEND STREQUAL "VULKAN" AND NOT RENDER_BACKEND STREQUAL "BOTH")
+	message (FATAL_ERROR "Invalid RENDER_BACKEND='${RENDER_BACKEND}'. Expected OPENGL, VULKAN, or BOTH.")
+endif ()
+
+set (BUILD_OPENGL OFF)
+set (BUILD_VULKAN OFF)
+if (RENDER_BACKEND STREQUAL "OPENGL")
+	set (BUILD_OPENGL ON)
+elseif (RENDER_BACKEND STREQUAL "VULKAN")
+	set (BUILD_VULKAN ON)
+else ()
+	set (BUILD_OPENGL ON)
+	set (BUILD_VULKAN ON)
+endif ()
+
+# Set project attributes.
 project (
-    ForestScene
-    VERSION 1.0.0
-    LANGUAGES CXX C
+	CG_Labs
+	VERSION 2021.2
+	DESCRIPTION [[Repository for Computer Graphics courses EDAF80 and EDAN35 at Lund University, Sweden.]]
+	HOMEPAGE_URL [[https://github.com/LUGGPublic/CG_Labs/]]
+	LANGUAGES CXX C
 )
 
+
+# Set build type
 set (CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo")
 if (NOT CMAKE_BUILD_TYPE)
-    set (CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
-endif ()
+	set (
+		CMAKE_BUILD_TYPE
+		"Release"
+		CACHE STRING
+		"Choose the type of build, options are: ${CMAKE_CONFIGURATION_TYPES}."
+		FORCE
+	)
+endif (NOT CMAKE_BUILD_TYPE)
 set_property (CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES})
 
-# ------------------------------------------------------------------------------
-# 2. 依赖库配置
-# ------------------------------------------------------------------------------
-find_package (Git REQUIRED)
-include (FetchContent)
-set (FETCHCONTENT_BASE_DIR "${PROJECT_SOURCE_DIR}/dependencies" CACHE PATH "Dependencies folder" FORCE)
-if (NOT EXISTS "${FETCHCONTENT_BASE_DIR}")
-    file (MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
+
+if (BUILD_VULKAN)
+	find_package(Vulkan REQUIRED)
+	find_package(glfw3 CONFIG REQUIRED)
 endif ()
 
-# --- Assimp (使用 Homebrew 安装的) ---
-find_package(assimp REQUIRED)
+# To be able to dowload and compile the dependencies
+find_package (Git REQUIRED)
+include (FetchContent)
+set (FETCHCONTENT_BASE_DIR "${PROJECT_SOURCE_DIR}/dependencies" CACHE PATH "Base folder where dependencies are processed." FORCE)
 
-# --- GLFW (尝试使用下载脚本，如果报错，请改为 find_package(glfw3 REQUIRED)) ---
+if (NOT EXISTS "${FETCHCONTENT_BASE_DIR}")
+	file (MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
+endif ()
+
+# assimp is used for loading the objects’s models
+set (LUGGCGL_ASSIMP_MIN_VERSION 5.1.0)
+set (LUGGCGL_ASSIMP_DOWNLOAD_VERSION 5.1.2)
+include (CMake/InstallAssimp.cmake)
+find_package (assimp ${LUGGCGL_ASSIMP_MIN_VERSION} REQUIRED)
+link_directories (${ASSIMP_LIBRARY_DIRS})
+
+# GLFW is used for inputs and windows handling
 set (LUGGCGL_GLFW_MIN_VERSION 3.2.0)
 set (LUGGCGL_GLFW_DOWNLOAD_VERSION 3.3.2)
 include (CMake/InstallGLFW.cmake)
 find_package (glfw3 ${LUGGCGL_GLFW_MIN_VERSION} REQUIRED)
 
-# --- GLM (手动配置修正版) ---
-set(GLM_ROOT "${CMAKE_SOURCE_DIR}/glm-0.9.9.5")
+# GLM is used for matrices, vectors and camera handling
+if (EXISTS "${CMAKE_SOURCE_DIR}/glm-0.9.9.5/glm/glm.hpp")
+	# GLM is header-only; prefer the vendored copy to avoid platform-specific package config issues.
+	add_library(luggcgl_glm INTERFACE)
+	target_include_directories(luggcgl_glm INTERFACE "${CMAKE_SOURCE_DIR}/glm-0.9.9.5")
+	add_library(glm::glm ALIAS luggcgl_glm)
+else ()
+	set (LUGGCGL_GLM_DOWNLOAD_VERSION 0.9.9.5)
+	include (CMake/InstallGLM.cmake)
+	find_package (glm REQUIRED)
+endif ()
 
-# 检查路径是否正确
-if(NOT EXISTS "${GLM_ROOT}/glm/glm.hpp")
-    message(FATAL_ERROR "GLM not found! looking at: ${GLM_ROOT}/glm/glm.hpp")
-endif()
-
-# 关键修正：创建一个名为 glm 的接口库，这样 bonobo 链接 glm 时才不会报错
-add_library(glm INTERFACE)
-target_include_directories(glm INTERFACE ${GLM_ROOT})
-
-# --- 其他小工具 ---
+# TinyFileDialogs is used for displaying error popups.
 include (CMake/InstallTinyFileDialogs.cmake)
+
+# stb is used for loading in image files.
 include (CMake/InstallSTB.cmake)
+
+# Resources are found in an external archive
 include (CMake/RetrieveResourceArchive.cmake)
 
-# ------------------------------------------------------------------------------
-# 3. 配置文件
-# ------------------------------------------------------------------------------
-set (MSAA_RATE "1" CACHE STRING "Window MSAA rate")
-set (WIDTH "1280" CACHE STRING "Window width")
-set (HEIGHT "720" CACHE STRING "Window height")
-set (ROOT_DIR "${PROJECT_SOURCE_DIR}")
 
+# Configure *C++ Environment Variables*
+set (MSAA_RATE "1" CACHE STRING "Window MSAA rate")
+set (WIDTH "1600" CACHE STRING "Window width")
+set (HEIGHT "900" CACHE STRING "Window height")
+set (ROOT_DIR "${PROJECT_SOURCE_DIR}")
 configure_file ("${PROJECT_SOURCE_DIR}/src/core/config.hpp.in" "${PROJECT_BINARY_DIR}/config.hpp")
 
-# ------------------------------------------------------------------------------
-# 4. 编译选项与核心库链接
-# ------------------------------------------------------------------------------
+
+# Set up Doxygen documentation generation
+option (LUGGCGL_BUILD_DOCUMENTATION "Build documentation for Lund University Computer Graphics Labs" OFF)
+if (LUGGCGL_BUILD_DOCUMENTATION)
+	find_package (Doxygen REQUIRED)
+	set (LUGGCGL_VERSION_NUMBER "${CMAKE_PROJECT_VERSION}")
+	set (LUGGCGL_DOC_INPUT "${CMAKE_SOURCE_DIR}/src")
+	set (LUGGCGL_DOC_EXCLUDE ${CMAKE_SOURCE_DIR}/src/external)
+	set (LUGGCGL_DOC_OUTPUT "${CMAKE_BINARY_DIR}/doc")
+	if (NOT EXISTS "${LUGGCGL_DOC_OUTPUT}")
+		file (MAKE_DIRECTORY "${LUGGCGL_DOC_OUTPUT}")
+	endif ()
+	configure_file ("${CMAKE_SOURCE_DIR}/Doxyfile.in" "${CMAKE_BINARY_DIR}/doc/Doxyfile" @ONLY)
+	add_custom_target (
+		doc
+		COMMAND ${DOXYGEN_EXECUTABLE} "${CMAKE_BINARY_DIR}/doc/Doxyfile"
+		WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/doc"
+		COMMENT "Generating API documentation with Doxygen"
+	)
+endif ()
+
+
+# Define a “fake” library to store the C++ configuration:
+# all libraries and executables linking against this target will automatically
+# inherit its configuration such as C++ standard version and additional C++
+# flags.
 add_library (CG_Labs_options INTERFACE)
 target_compile_definitions(
-    CG_Labs_options
-    INTERFACE
-        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:NOMINMAX>
+	CG_Labs_options
+	INTERFACE
+		$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:NOMINMAX>
 )
 target_compile_options (
-    CG_Labs_options
-    INTERFACE
-        $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8;/Zc:__cplusplus>
+	CG_Labs_options
+	INTERFACE
+		$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8;/Zc:__cplusplus>
 )
 target_compile_features (CG_Labs_options INTERFACE cxx_std_14)
 
+
+# Define another “fake” library that provides a common setup for all
+# assignments. At the moment it only contains all common dependencies but it
+# could contain more, like specific compilation flags.
 add_library (assignment_setup INTERFACE)
 target_link_libraries (
-    assignment_setup
-    INTERFACE
-        bonobo
-        CG_Labs_options
-        tinyfiledialogs::tinyfiledialogs
+       assignment_setup
+       INTERFACE
+               bonobo
+               CG_Labs_options
+               tinyfiledialogs::tinyfiledialogs
 )
 
-# Windows 辅助函数 (保留)
+
 function (copy_dlls target target_folder)
-    if (WIN32)
-        get_target_property (assimp_dll_path assimp::assimp IMPORTED_LOCATION_RELEASE)
-        get_filename_component (assimp_dll "${assimp_dll_path}" NAME)
-        if (NOT EXISTS "${target_folder}/${assimp_dll}")
-            add_custom_command (
-                TARGET ${target}
-                POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy ${assimp_dll_path} ${target_folder}
-                COMMENT "Copying dependent DLLs"
-            )
-        endif ()
-    endif ()
+	if (WIN32)
+		get_target_property (assimp_dll_path assimp::assimp IMPORTED_LOCATION_RELEASE)
+		get_filename_component (assimp_dll "${assimp_dll_path}" NAME)
+
+		if (NOT EXISTS "${target_folder}/${assimp_dll}")
+			add_custom_command (
+				TARGET ${target}
+				POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy ${assimp_dll_path} ${target_folder}
+				COMMENT "Copying dependent DLLs"
+			)
+		endif ()
+	endif ()
 endfunction ()
 
-# ------------------------------------------------------------------------------
-# 5. 构建子目录
-# ------------------------------------------------------------------------------
+
 add_subdirectory ("${CMAKE_SOURCE_DIR}/src/external")
 add_subdirectory ("${CMAKE_SOURCE_DIR}/src/core")
+set(MAIN_SOURCE "${CMAKE_SOURCE_DIR}/src/main.cpp")
+# set(VK_MAIN_SOURCE "${CMAKE_SOURCE_DIR}/src/main_vk.cpp")
 
-# ------------------------------------------------------------------------------
-# 6. 定义你的项目
-# ------------------------------------------------------------------------------
-set(MAIN_SOURCE "src/main.cpp")
+set(VK_SOURCE
+	"${CMAKE_SOURCE_DIR}/src/vk_main.cpp"
+	"${CMAKE_SOURCE_DIR}/src/vk_main.hpp"
+)
+
+# Vulkan framework skeleton (final integration architecture).
+file(GLOB_RECURSE VK_FRAMEWORK_SOURCES CONFIGURE_DEPENDS
+	"${CMAKE_SOURCE_DIR}/src/vk/*.cpp"
+	"${CMAKE_SOURCE_DIR}/src/vk/*.hpp"
+)
 
 set(SCENE_SOURCE 
-    "src/ForestScene.cpp" 
-    "src/ForestScene.hpp"
+    "${CMAKE_SOURCE_DIR}/src/ForestScene.cpp" 
+    "${CMAKE_SOURCE_DIR}/src/ForestScene.hpp"
 )
 
-add_executable(ForestScene 
-    ${MAIN_SOURCE}
-    ${SCENE_SOURCE} 
+if (BUILD_OPENGL)
+	add_executable(ForestScene
+		${MAIN_SOURCE}
+		${SCENE_SOURCE}
+	)
+
+	target_compile_definitions(ForestScene
+		PRIVATE
+		BUILD_VULKAN=0
+	)
+
+	target_link_libraries(ForestScene
+		PRIVATE
+		assignment_setup
+	)
+
+	copy_dlls (ForestScene "${CMAKE_CURRENT_BINARY_DIR}")
+	install (
+		TARGETS ForestScene
+		DESTINATION ${CMAKE_SOURCE_DIR}/src/bin
+	)
+endif ()
+
+if (BUILD_VULKAN)
+	add_executable(ForestSceneVk
+		${MAIN_SOURCE}
+		${VK_SOURCE}
+		${VK_FRAMEWORK_SOURCES}
+	)
+
+	target_compile_definitions(ForestSceneVk
+		PRIVATE
+		BUILD_VULKAN=1
+	)
+
+	target_include_directories(ForestSceneVk
+		PRIVATE
+		"${CMAKE_SOURCE_DIR}/src"
+	)
+	target_compile_features(ForestSceneVk PRIVATE cxx_std_20)
+
+
+	add_definitions(-DNOMINMAX)
+		# 5. 添加必要的宏定义（针对 Vulkan-Hpp）
+	target_compile_definitions(ForestSceneVk PRIVATE 
+			VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+			VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+		)
+
+	target_link_libraries(ForestSceneVk
+		PRIVATE
+		CG_Labs_options
+		assignment_setup
+		glfw
+		glm::glm
+		Vulkan::Vulkan
+		${CMAKE_DL_LIBS}
+	)
+
+	install (
+		TARGETS ForestSceneVk
+		DESTINATION ${CMAKE_SOURCE_DIR}/src/bin
+	)
+endif ()
+# add_executable(ForestScene 
+#     ${MAIN_SOURCE}
+#     ${SCENE_SOURCE} 
+# )
+
+# target_link_libraries(ForestScene
+#     PRIVATE
+#     assignment_setup
+#     # glfw
+#     # glm              # 现在这个名字有效了，因为我们在上面定义了 add_library(glm)
+#     # assimp::assimp   # 使用更安全的命名空间链接
+# )
+
+copy_dlls (ForestScene "${CMAKE_CURRENT_BINARY_DIR}")
+message(${CMAKE_CURRENT_BINARY_DIR})
+message(${CMAKE_SOURCE_DIR})
+install (
+	TARGETS
+	DESTINATION ${CMAKE_SOURCE_DIR}/src/bin
 )
 
-target_link_libraries(ForestScene
-    PRIVATE
-    assignment_setup
-    glfw
-    glm              # 现在这个名字有效了，因为我们在上面定义了 add_library(glm)
-    assimp::assimp   # 使用更安全的命名空间链接
-)
 
 # ------------------------------------------------------------------------------
 # 7. 资源复制
@@ -146,3 +297,6 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_CURRENT_BINARY
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/res DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 message(STATUS "ForestScene setup done.")
+
+# # install (DIRECTORY ${CMAKE_SOURCE_DIR}/shaders DESTINATION bin)
+# # install (DIRECTORY ${CMAKE_SOURCE_DIR}/res DESTINATION bin)
