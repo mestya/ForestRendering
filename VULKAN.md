@@ -27,6 +27,20 @@ cmake --build build_vk --target ForestSceneVK
 If you are using a multi-config generator (Visual Studio / Xcode), the binary
 will be under the configuration folder (e.g. `build_vk/Release/ForestSceneVK`).
 
+## VSCode (CMake Tools)
+
+This repo includes a minimal `.vscode/` setup:
+
+- Configure uses build dir `build_vk_vscode` and enables Vulkan.
+- Run/Debug uses the CMake Tools launch target and a pre-launch build task.
+
+In VSCode:
+
+1. Select a kit/toolchain (Command Palette: `CMake: Select a Kit`)
+2. Configure (`CMake: Configure`)
+3. Build the target `ForestSceneVK`
+4. Press `F5` and choose **Run ForestSceneVK (CMake Tools)**
+
 ## Vulkan SDK setup (team notes)
 
 - Windows: install LunarG Vulkan SDK and ensure `VULKAN_SDK` is set (CMake's

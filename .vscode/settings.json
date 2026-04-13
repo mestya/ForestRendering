@@ -1,0 +1,7 @@
+{
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "cmake.buildDirectory": "${workspaceFolder}/build_vk_vscode",
+  "cmake.configureArgs": ["-DFORESTSCENE_ENABLE_VULKAN=ON"],
+  "cmake.configureOnOpen": true
+}
+
