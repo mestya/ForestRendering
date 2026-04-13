@@ -2,28 +2,30 @@
 
 This branch adds a minimal Vulkan executable target: `ForestSceneVK`.
 
+For module boundaries / collaboration guidelines, see `VULKAN_ARCHITECTURE.md`.
+
 ## Quick start
 
 ### Configure
 
 ```bash
-cmake -S . -B build -DFORESTSCENE_ENABLE_VULKAN=ON
+cmake -S . -B build_vk -DFORESTSCENE_ENABLE_VULKAN=ON
 ```
 
 ### Build
 
 ```bash
-cmake --build build --config Release
+cmake --build build_vk --target ForestSceneVK
 ```
 
 ### Run
 
 ```bash
-./build/ForestSceneVK
+./build_vk/ForestSceneVK
 ```
 
 If you are using a multi-config generator (Visual Studio / Xcode), the binary
-will be under the configuration folder (e.g. `build/Release/ForestSceneVK`).
+will be under the configuration folder (e.g. `build_vk/Release/ForestSceneVK`).
 
 ## Vulkan SDK setup (team notes)
 
@@ -43,4 +45,3 @@ Suggested directory convention (to keep work disjoint):
 
 The current skeleton only clears the swapchain color each frame; it is meant as
 the base for adding passes and resource management.
-

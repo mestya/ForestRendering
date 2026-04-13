@@ -1,5 +1,8 @@
 # Build folders
 build/
+build_*/
+build-*/
+cmake-build-*/
 Debug/
 Release/
 ipch/

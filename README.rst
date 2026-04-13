@@ -34,7 +34,8 @@ Vulkan (experimental)
 ---------------------
 
 This branch also contains a Vulkan framework executable ``ForestSceneVK`` (see
-``VULKAN.md``) which requires a Vulkan SDK / loader on your system.
+``VULKAN.md`` and ``VULKAN_ARCHITECTURE.md``) which requires a Vulkan SDK /
+loader on your system.
 
 The project contains the needed files for GLAD and Dear ImGui, and it will
 download assimp, GLM, GLFW, stb and tinyfiledialogs if they are not found on
