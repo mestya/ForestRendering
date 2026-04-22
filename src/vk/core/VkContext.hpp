@@ -14,10 +14,6 @@ struct GLFWwindow;
 
 namespace vkfw {
 
-struct ImGuiResources {
-    vk::raii::DescriptorPool descriptorPool = nullptr;
-};
-
 struct ContextCreateInfo {
   // Non-owning.
   ::GLFWwindow* window = nullptr;

@@ -2,18 +2,22 @@
 
 #include "vk/renderer/RenderTargets.hpp"
 
-namespace vkfw {
-
-bool GBufferPass::Create(VkContext&, VkSwapchain const&, RenderTargets& targets)
+namespace vkfw
 {
-  targets.has_gbuffer = true;
-  return true;
-}
 
-void GBufferPass::Destroy(VkContext&) {}
+  bool GBufferPass::Create(VkContext &, VkSwapchain const &, RenderTargets &targets)
+  {
+    targets.has_gbuffer = true;
+    return true;
+  }
 
-void GBufferPass::OnSwapchainRecreated(VkContext&, VkSwapchain const&, RenderTargets&) {}
+  void GBufferPass::Destroy(VkContext &)
+  {
+    // IRenderPass::Destroy(ctx);
+  }
 
-void GBufferPass::Record(FrameContext&, RenderTargets&) {}
+  void GBufferPass::OnSwapchainRecreated(VkContext &, VkSwapchain const &, RenderTargets &) {}
+
+  void GBufferPass::Record(FrameContext &, RenderTargets &) {}
 
 } // namespace vkfw

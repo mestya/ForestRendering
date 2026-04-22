@@ -56,6 +56,6 @@ target_link_libraries (
 		${CMAKE_DL_LIBS}
 )
 
-target_compile_definitions(external_libs PUBLIC IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
+# target_compile_definitions(external_libs PUBLIC IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
 
 install (TARGETS external_libs DESTINATION lib)

@@ -2,16 +2,17 @@
 
 #include <memory>
 
-class VkMainApp {
+class VkMainApp
+{
 public:
   VkMainApp();
   ~VkMainApp();
 
-  VkMainApp(VkMainApp const&) = delete;
-  VkMainApp& operator=(VkMainApp const&) = delete;
+  VkMainApp(VkMainApp const &) = delete;
+  VkMainApp &operator=(VkMainApp const &) = delete;
 
-  VkMainApp(VkMainApp&&) noexcept;
-  VkMainApp& operator=(VkMainApp&&) noexcept;
+  VkMainApp(VkMainApp &&) noexcept;
+  VkMainApp &operator=(VkMainApp &&) noexcept;
 
   // Run Vulkan triangle demo. Returns 0 on success.
   int Run();

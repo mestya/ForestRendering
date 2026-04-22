@@ -275,14 +275,15 @@ if (BUILD_OPENGL)
 endif ()
 
 if (BUILD_VULKAN)
-	find_program(GLSLC_EXECUTABLE NAMES glslc HINTS ENV PATH)
-	if (NOT GLSLC_EXECUTABLE)
-	message(FATAL_ERROR "glslc not found")
+	find_program(SLANGC_EXECUTABLE NAMES slangc REQUIRED)
+	# find_program(GLSLC_EXECUTABLE NAMES glslc HINTS ENV PATH)
+	if (NOT SLANGC_EXECUTABLE)
+	message(FATAL_ERROR "slangc not found")
 	endif()
 
 	set(VK_SHADER_SOURCES
-	"${CMAKE_SOURCE_DIR}/shaders/vk/mesh.vert"
-	"${CMAKE_SOURCE_DIR}/shaders/vk/mesh.frag"
+	"${CMAKE_SOURCE_DIR}/shaders/vk/mesh.vert.slang"
+	"${CMAKE_SOURCE_DIR}/shaders/vk/mesh.frag.slang"
 	)
 
 	set(VK_SHADER_SPV_OUTPUTS "")
@@ -292,7 +293,7 @@ if (BUILD_VULKAN)
 	add_custom_command(
 		OUTPUT "${shader_out}"
 		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/res/vk"
-		COMMAND "${GLSLC_EXECUTABLE}" -o "${shader_out}" "${shader_src}"
+		COMMAND "${SLANGC_EXECUTABLE}" -o "${shader_out}" "${shader_src}"
 		DEPENDS "${shader_src}"
 		VERBATIM
 	)
@@ -333,6 +334,7 @@ if (BUILD_VULKAN)
 		assignment_setup
 		glfw
 		Vulkan::Vulkan
+		stb::stb
 		
 		${CMAKE_DL_LIBS}
 		

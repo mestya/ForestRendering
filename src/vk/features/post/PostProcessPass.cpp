@@ -2,18 +2,19 @@
 
 #include "vk/renderer/RenderTargets.hpp"
 
-namespace vkfw {
-
-bool PostProcessPass::Create(VkContext&, VkSwapchain const&, RenderTargets& targets)
+namespace vkfw
 {
-  targets.has_ssao = true; // placeholder
-  return true;
-}
 
-void PostProcessPass::Destroy(VkContext&) {}
+  bool PostProcessPass::Create(VkContext &, VkSwapchain const &, RenderTargets &targets)
+  {
+    targets.has_ssao = true; // placeholder
+    return true;
+  }
 
-void PostProcessPass::OnSwapchainRecreated(VkContext&, VkSwapchain const&, RenderTargets&) {}
+  void PostProcessPass::Destroy(VkContext &) {}
 
-void PostProcessPass::Record(FrameContext&, RenderTargets&) {}
+  void PostProcessPass::OnSwapchainRecreated(VkContext &, VkSwapchain const &, RenderTargets &) {}
+
+  void PostProcessPass::Record(FrameContext &, RenderTargets &) {}
 
 } // namespace vkfw
