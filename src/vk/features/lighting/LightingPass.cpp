@@ -33,64 +33,6 @@ namespace vkfw
       };
     }
 
-    static std::vector<char> ReadFile(std::string const &filename)
-    {
-      std::ifstream file(filename, std::ios::ate | std::ios::binary);
-      if (!file.is_open())
-        throw std::runtime_error("Failed to open file: " + filename);
-
-      std::vector<char> buffer(static_cast<size_t>(file.tellg()));
-      file.seekg(0, std::ios::beg);
-      file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-      file.close();
-      return buffer;
-    }
-
-    static uint32_t FindMemoryType(vk::PhysicalDeviceMemoryProperties const &mem_props,
-                                   uint32_t type_bits,
-                                   vk::MemoryPropertyFlags required)
-    {
-      for (uint32_t i = 0; i < mem_props.memoryTypeCount; ++i)
-      {
-        if ((type_bits & (1u << i)) == 0u)
-          continue;
-        if ((mem_props.memoryTypes[i].propertyFlags & required) == required)
-          return i;
-      }
-      throw std::runtime_error("Failed to find suitable memory type");
-    }
-
-    static void TransitionImage(vk::raii::CommandBuffer &cmd,
-                                vk::Image image,
-                                vk::ImageLayout old_layout,
-                                vk::ImageLayout new_layout,
-                                vk::AccessFlags2 src_access,
-                                vk::AccessFlags2 dst_access,
-                                vk::PipelineStageFlags2 src_stage,
-                                vk::PipelineStageFlags2 dst_stage)
-    {
-      vk::ImageMemoryBarrier2 barrier{};
-      barrier.srcStageMask = src_stage;
-      barrier.srcAccessMask = src_access;
-      barrier.dstStageMask = dst_stage;
-      barrier.dstAccessMask = dst_access;
-      barrier.oldLayout = old_layout;
-      barrier.newLayout = new_layout;
-      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.image = image;
-      barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-      barrier.subresourceRange.baseMipLevel = 0;
-      barrier.subresourceRange.levelCount = 1;
-      barrier.subresourceRange.baseArrayLayer = 0;
-      barrier.subresourceRange.layerCount = 1;
-
-      vk::DependencyInfo dep{};
-      dep.imageMemoryBarrierCount = 1;
-      dep.pImageMemoryBarriers = &barrier;
-      cmd.pipelineBarrier2(dep);
-    }
-
   } // namespace
 
   bool LightingPass::Create(VkContext &ctx, VkSwapchain const &swapchain, RenderTargets &)
@@ -200,7 +142,7 @@ namespace vkfw
       auto req = vertex_buffer_.getMemoryRequirements();
       vk::MemoryAllocateInfo mai{};
       mai.allocationSize = req.size;
-      mai.memoryTypeIndex = FindMemoryType(mem_props, req.memoryTypeBits,
+      mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), req.memoryTypeBits,
                                            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
       vertex_memory_ = vk::raii::DeviceMemory{device, mai};
       vertex_buffer_.bindMemory(*vertex_memory_, 0);
@@ -220,7 +162,7 @@ namespace vkfw
       auto req = index_buffer_.getMemoryRequirements();
       vk::MemoryAllocateInfo mai{};
       mai.allocationSize = req.size;
-      mai.memoryTypeIndex = FindMemoryType(mem_props, req.memoryTypeBits,
+      mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), req.memoryTypeBits,
                                            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
       index_memory_ = vk::raii::DeviceMemory{device, mai};
       index_buffer_.bindMemory(*index_memory_, 0);
@@ -264,14 +206,9 @@ namespace vkfw
     auto &cmd = *frame.cmd;
 
     // Transition swapchain image for rendering.
-    TransitionImage(cmd,
-                    frame.swapchain_image,
-                    frame.swapchain_old_layout,
-                    vk::ImageLayout::eColorAttachmentOptimal,
-                    {},
-                    vk::AccessFlagBits2::eColorAttachmentWrite,
-                    vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                    vk::PipelineStageFlagBits2::eColorAttachmentOutput);
+    TransitionImage(cmd, frame.swapchain_image, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
+                    vk::ImageAspectFlagBits::eColor, vk::AccessFlagBits2::eColorAttachmentWrite, {},
+                    vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eBottomOfPipe);
 
     vk::ClearValue clear{};
     clear.color = vk::ClearColorValue(std::array<float, 4>{{0.0f, 0.0f, 0.0f, 1.0f}});
@@ -305,14 +242,9 @@ namespace vkfw
     cmd.endRendering();
 
     // Transition to present.
-    TransitionImage(cmd,
-                    frame.swapchain_image,
-                    vk::ImageLayout::eColorAttachmentOptimal,
-                    vk::ImageLayout::ePresentSrcKHR,
-                    vk::AccessFlagBits2::eColorAttachmentWrite,
-                    {},
-                    vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                    vk::PipelineStageFlagBits2::eBottomOfPipe);
+    TransitionImage(cmd, frame.swapchain_image, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
+                    vk::ImageAspectFlagBits::eColor, vk::AccessFlagBits2::eColorAttachmentWrite, {},
+                    vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eBottomOfPipe);
   }
 
   void LightingPass::setDebugParameter(DebugParam &param)

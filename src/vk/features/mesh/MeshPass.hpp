@@ -26,14 +26,6 @@ namespace vkfw
         void Record(FrameContext &frame, RenderTargets &targets) override;
 
     private:
-        struct alignas(16) CameraUBO
-        {
-            glm::mat4 view{1.0f};
-            glm::mat4 proj{1.0f};
-            glm::mat4 model{1.0f};
-            glm::vec4 camera_pos{0.0f};
-        };
-
         // 子网格结构体：用于区分树干和树叶
         struct SubMesh
         {
@@ -54,8 +46,6 @@ namespace vkfw
         {
             glm::mat4 model;
         };
-        uint32_t FindMemoryType(VkContext &ctx, uint32_t type_bits, vk::MemoryPropertyFlags required);
-        std::vector<char> ReadFile(std::string const &filename);
 
         std::string model_path_;
         std::vector<SubMesh> sub_meshes_;

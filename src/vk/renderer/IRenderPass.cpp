@@ -20,8 +20,10 @@
 #endif
 namespace vkfw
 {
+  vk::raii::Sampler IRenderPass::common_sampler_{nullptr};
   namespace
   {
+
     static std::string GetCwd()
     {
 #if defined(_WIN32)
@@ -53,7 +55,8 @@ namespace vkfw
       // `config::resources_path()` picks "." when the requested file exists in CWD.
       // We want the baked-in project root regardless of CWD, so we ask for a (likely)
       // missing file and strip the known suffix.
-      static std::string cached = []() {
+      static std::string cached = []()
+      {
         std::string const marker = "__codex_missing_resource_marker__";
         std::string const dummy = config::resources_path(marker); // "<root>/res/<marker>"
 
@@ -276,6 +279,16 @@ namespace vkfw
         ctx.PhysicalDevice(),
         ctx.GraphicsQueue(),
         path);
+  }
+  std::vector<char> IRenderPass::ReadFile(std::string const &filename)
+  {
+    std::ifstream file(filename, std::ios::ate | std::ios::binary);
+    if (!file.is_open())
+      throw std::runtime_error("Failed to open file: " + filename);
+    std::vector<char> buffer(static_cast<size_t>(file.tellg()));
+    file.seekg(0);
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    return buffer;
   }
 
 } // namespace vkfw

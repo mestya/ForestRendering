@@ -33,9 +33,8 @@ namespace vkfw
     };
 
   protected:
-    // 待改，应该所有子类共享一份采样器
-    vk::raii::Sampler common_sampler_{nullptr};
-
+    // 所有子类共享一份采样器
+    static vk::raii::Sampler common_sampler_;
     std::vector<TextureResource> textures_;
 
   protected:
@@ -44,6 +43,7 @@ namespace vkfw
         vk::raii::PhysicalDevice &physDevice,
         vk::raii::Queue &queue,
         const std::string &path);
+    std::vector<char> ReadFile(std::string const &filename);
     void LoadTexture(VkContext &ctx, const std::string &path, uint32_t index);
     void CreateCommonSampler(vk::raii::Device &device)
     {

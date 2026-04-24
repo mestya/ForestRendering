@@ -3,6 +3,7 @@ struct CameraData {
     column_major float4x4 view;
     column_major float4x4 proj;
     column_major float4x4 unused_model;
+    column_major float4x4 light;
     float4 cameraPos;
 };
 

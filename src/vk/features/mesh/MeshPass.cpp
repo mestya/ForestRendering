@@ -24,67 +24,8 @@
 
 namespace vkfw
 {
-  // namespace
-  // {
-  //   static void TransitionImage(vk::raii::CommandBuffer &cmd,
-  //                               vk::Image image,
-  //                               vk::ImageLayout old_layout,
-  //                               vk::ImageLayout new_layout,
-  //                               vk::ImageAspectFlags aspect,
-  //                               vk::AccessFlags2 src_access,
-  //                               vk::AccessFlags2 dst_access,
-  //                               vk::PipelineStageFlags2 src_stage,
-  //                               vk::PipelineStageFlags2 dst_stage)
-  //   {
-  //     vk::ImageMemoryBarrier2 barrier{};
-  //     barrier.srcStageMask = src_stage;
-  //     barrier.srcAccessMask = src_access;
-  //     barrier.dstStageMask = dst_stage;
-  //     barrier.dstAccessMask = dst_access;
-  //     barrier.oldLayout = old_layout;
-  //     barrier.newLayout = new_layout;
-  //     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  //     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  //     barrier.image = image;
-  //     barrier.subresourceRange.aspectMask = aspect;
-  //     barrier.subresourceRange.baseMipLevel = 0;
-  //     barrier.subresourceRange.levelCount = 1;
-  //     barrier.subresourceRange.baseArrayLayer = 0;
-  //     barrier.subresourceRange.layerCount = 1;
-
-  //     vk::DependencyInfo dep{};
-  //     dep.imageMemoryBarrierCount = 1;
-  //     dep.pImageMemoryBarriers = &barrier;
-  //     cmd.pipelineBarrier2(dep);
-  //   }
-
-  // } // namespace
 
   MeshPass::MeshPass(std::string model_path) : model_path_(std::move(model_path)) {}
-
-  std::vector<char> MeshPass::ReadFile(std::string const &filename)
-  {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-    if (!file.is_open())
-      throw std::runtime_error("Failed to open file: " + filename);
-    std::vector<char> buffer(static_cast<size_t>(file.tellg()));
-    file.seekg(0);
-    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-    return buffer;
-  }
-
-  uint32_t MeshPass::FindMemoryType(VkContext &ctx, uint32_t type_bits, vk::MemoryPropertyFlags required)
-  {
-    auto mem_props = ctx.PhysicalDevice().getMemoryProperties();
-    for (uint32_t i = 0; i < mem_props.memoryTypeCount; ++i)
-    {
-      if ((type_bits & (1u << i)) == 0)
-        continue;
-      if ((mem_props.memoryTypes[i].propertyFlags & required) == required)
-        return i;
-    }
-    throw std::runtime_error("No suitable memory type");
-  }
 
   bool MeshPass::Create(VkContext &ctx, VkSwapchain const &swapchain, RenderTargets &targets)
   {
@@ -162,7 +103,7 @@ namespace vkfw
     vk::MemoryAllocateInfo inst_mai{};
     inst_mai.sType = vk::StructureType::eMemoryAllocateInfo; // 必须显式指定
     inst_mai.allocationSize = inst_req.size;
-    inst_mai.memoryTypeIndex = FindMemoryType(ctx, inst_req.memoryTypeBits,
+    inst_mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), inst_req.memoryTypeBits,
                                               vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
     instance_mem_ = vk::raii::DeviceMemory{device, inst_mai};
@@ -185,7 +126,7 @@ namespace vkfw
       auto req = vb_.getMemoryRequirements();
       vk::MemoryAllocateInfo vb_mai{};
       vb_mai.allocationSize = req.size;
-      vb_mai.memoryTypeIndex = FindMemoryType(ctx, req.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+      vb_mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), req.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
       vb_mem_ = vk::raii::DeviceMemory{device, vb_mai};
       vb_.bindMemory(*vb_mem_, 0);
 
@@ -206,7 +147,7 @@ namespace vkfw
       auto ireq = ib_.getMemoryRequirements();
       vk::MemoryAllocateInfo ib_mai{};
       ib_mai.allocationSize = ireq.size;
-      ib_mai.memoryTypeIndex = FindMemoryType(ctx, ireq.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+      ib_mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), ireq.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
       ib_mem_ = vk::raii::DeviceMemory{device, ib_mai};
       ib_.bindMemory(*ib_mem_, 0);
 
@@ -279,12 +220,12 @@ namespace vkfw
       auto req = ubo_buf_.back().getMemoryRequirements();
       vk::MemoryAllocateInfo u_mai{};
       u_mai.allocationSize = req.size;
-      u_mai.memoryTypeIndex = FindMemoryType(ctx, req.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+      u_mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), req.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
       ubo_mem_.push_back(vk::raii::DeviceMemory{device, u_mai});
       ubo_buf_.back().bindMemory(*ubo_mem_.back(), 0);
       ubo_map_[i] = ubo_mem_.back().mapMemory(0, sizeof(CameraUBO));
 
-      for (uint32_t m = 0; m < 2; ++m)
+      for (uint32_t m = 0; m < textures_.size(); ++m)
       {
         vk::DescriptorBufferInfo bi{*ubo_buf_[i], 0, sizeof(CameraUBO)};
         vk::DescriptorImageInfo ii{*common_sampler_, *textures_[m].view, vk::ImageLayout::eShaderReadOnlyOptimal};
@@ -481,6 +422,7 @@ namespace vkfw
     CameraUBO ubo{};
     ubo.view = frame.globals->view;
     ubo.proj = frame.globals->proj;
+    ubo.light = frame.globals->light;
     ubo.model = model_matrix_;
     ubo.camera_pos = glm::vec4(frame.globals->camera_pos, 1.0f);
 
@@ -500,14 +442,14 @@ namespace vkfw
     vk::RenderingAttachmentInfo color_att{};
     color_att.imageView = frame.swapchain_image_view;
     color_att.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-    color_att.loadOp = vk::AttachmentLoadOp::eClear;
+    color_att.loadOp = vk::AttachmentLoadOp::eLoad;
     color_att.storeOp = vk::AttachmentStoreOp::eStore;
     color_att.clearValue = clear_color;
 
     vk::RenderingAttachmentInfo depth_att{};
     depth_att.imageView = targets.shared_depth.view;
     depth_att.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal;
-    depth_att.loadOp = vk::AttachmentLoadOp::eClear;
+    depth_att.loadOp = vk::AttachmentLoadOp::eLoad;
     depth_att.storeOp = vk::AttachmentStoreOp::eStore;
     depth_att.clearValue = clear_depth;
 
@@ -556,11 +498,6 @@ namespace vkfw
     }
 
     cmd.endRendering();
-
-    // 5. 转换回可显示布局
-    TransitionImage(cmd, frame.swapchain_image, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
-                    vk::ImageAspectFlagBits::eColor, vk::AccessFlagBits2::eColorAttachmentWrite, {},
-                    vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eBottomOfPipe);
   }
 
 } // namespace vkfw

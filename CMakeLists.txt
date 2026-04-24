@@ -276,24 +276,51 @@ endif ()
 
 if (BUILD_VULKAN)
 	find_program(SLANGC_EXECUTABLE NAMES slangc REQUIRED)
-	# find_program(GLSLC_EXECUTABLE NAMES glslc HINTS ENV PATH)
+	find_program(GLSLC_EXECUTABLE NAMES glslc REQUIRED)
 	if (NOT SLANGC_EXECUTABLE)
 	message(FATAL_ERROR "slangc not found")
+	endif()
+	if (NOT GLSLC_EXECUTABLE)
+	message(FATAL_ERROR "glslc not found")
 	endif()
 
 	set(VK_SHADER_SOURCES
 	"${CMAKE_SOURCE_DIR}/shaders/vk/mesh.vert.slang"
 	"${CMAKE_SOURCE_DIR}/shaders/vk/mesh.frag.slang"
+	"${CMAKE_SOURCE_DIR}/shaders/vk/terrain.slang"
+	)
+
+	set(VK_GLSL_SHADER_SOURCES
+	"${CMAKE_SOURCE_DIR}/shaders/vk/skybox.vert"
+	"${CMAKE_SOURCE_DIR}/shaders/vk/skybox.frag"
 	)
 
 	set(VK_SHADER_SPV_OUTPUTS "")
 	foreach(shader_src IN LISTS VK_SHADER_SOURCES)
-	get_filename_component(shader_name "${shader_src}" NAME)
+	get_filename_component(shader_full_name "${shader_src}" NAME)
+	string(REPLACE ".slang" "" shader_name "${shader_full_name}")
 	set(shader_out "${CMAKE_CURRENT_BINARY_DIR}/res/vk/${shader_name}.spv")
 	add_custom_command(
 		OUTPUT "${shader_out}"
 		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/res/vk"
 		COMMAND "${SLANGC_EXECUTABLE}" -o "${shader_out}" "${shader_src}"
+		DEPENDS "${shader_src}"
+		VERBATIM
+	)
+	file(GLOB SPV_FILES "${CMAKE_CURRENT_BINARY_DIR}/res/vk/*.spv")
+	if(SPV_FILES)
+    file(COPY ${SPV_FILES} DESTINATION "${CMAKE_SOURCE_DIR}/res/vk")
+	endif()
+	list(APPEND VK_SHADER_SPV_OUTPUTS "${shader_out}")
+	endforeach()
+
+	foreach(shader_src IN LISTS VK_GLSL_SHADER_SOURCES)
+	get_filename_component(shader_name "${shader_src}" NAME)
+	set(shader_out "${CMAKE_CURRENT_BINARY_DIR}/res/vk/${shader_name}.spv")
+	add_custom_command(
+		OUTPUT "${shader_out}"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/res/vk"
+		COMMAND "${GLSLC_EXECUTABLE}" -o "${shader_out}" "${shader_src}"
 		DEPENDS "${shader_src}"
 		VERBATIM
 	)

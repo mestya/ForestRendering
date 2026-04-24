@@ -78,167 +78,93 @@ namespace vkfw
       return data;
     }
 
-    static vk::VertexInputBindingDescription getBindingDescription()
-    {
-      return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
-    }
-
-    static std::array<vk::VertexInputAttributeDescription, 3> AttrDescs()
-    {
-      return {
-          vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, pos)),
-          vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal)),
-          vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, uv)),
-      };
-    }
-
-    static std::vector<char> ReadFile(std::string const &filename)
-    {
-      std::ifstream file(filename, std::ios::ate | std::ios::binary);
-      if (!file.is_open())
-        throw std::runtime_error("Failed to open file: " + filename);
-
-      std::vector<char> buffer(static_cast<size_t>(file.tellg()));
-      file.seekg(0, std::ios::beg);
-      file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-      file.close();
-      return buffer;
-    }
-
-    static uint32_t FindMemoryType(vk::PhysicalDeviceMemoryProperties const &mem_props,
-                                   uint32_t type_bits,
-                                   vk::MemoryPropertyFlags required)
-    {
-      for (uint32_t i = 0; i < mem_props.memoryTypeCount; ++i)
-      {
-        if ((type_bits & (1u << i)) == 0u)
-          continue;
-        if ((mem_props.memoryTypes[i].propertyFlags & required) == required)
-          return i;
-      }
-      throw std::runtime_error("Failed to find suitable memory type");
-    }
-
-    static void TransitionImage(vk::raii::CommandBuffer &cmd,
-                                vk::Image image,
-                                vk::ImageLayout old_layout,
-                                vk::ImageLayout new_layout,
-                                vk::AccessFlags2 src_access,
-                                vk::AccessFlags2 dst_access,
-                                vk::PipelineStageFlags2 src_stage,
-                                vk::PipelineStageFlags2 dst_stage)
-    {
-      vk::ImageMemoryBarrier2 barrier{};
-      barrier.srcStageMask = src_stage;
-      barrier.srcAccessMask = src_access;
-      barrier.dstStageMask = dst_stage;
-      barrier.dstAccessMask = dst_access;
-      barrier.oldLayout = old_layout;
-      barrier.newLayout = new_layout;
-      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.image = image;
-      barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-      barrier.subresourceRange.baseMipLevel = 0;
-      barrier.subresourceRange.levelCount = 1;
-      barrier.subresourceRange.baseArrayLayer = 0;
-      barrier.subresourceRange.layerCount = 1;
-
-      vk::DependencyInfo dep{};
-      dep.imageMemoryBarrierCount = 1;
-      dep.pImageMemoryBarriers = &barrier;
-      cmd.pipelineBarrier2(dep);
-    }
-
   } // namespace
 
-  bool TerrainPass::Create(VkContext &ctx, VkSwapchain const &swapchain, RenderTargets &targets)
+  vk::raii::DescriptorSetLayout TerrainPass::CreateDescriptorSetLayout(const vk::raii::Device &device)
   {
-    auto &device = ctx.Device();
+    vk::DescriptorSetLayoutBinding ub_bind{};
+    ub_bind.binding = 0;
+    ub_bind.descriptorType = vk::DescriptorType::eUniformBuffer;
+    ub_bind.descriptorCount = 1;
+    ub_bind.stageFlags = vk::ShaderStageFlagBits::eVertex;
 
-    // Shaders: reuse the existing demo SPIR-V that contains vertMain/fragMain.
-    auto const code = ReadFile("res/09_shader_base.spv");
-    vk::ShaderModuleCreateInfo sm_ci{};
-    sm_ci.codeSize = code.size();
-    sm_ci.pCode = reinterpret_cast<uint32_t const *>(code.data());
-    vk::raii::ShaderModule shader_module{device, sm_ci};
-    terrtain_ = createQuad(500.0f, 500.0f, 1000, 1000);
-    LoadTexture(ctx, "res/forested-floor/textures/KiplingerFLOOR.png", 0);
+    vk::DescriptorSetLayoutBinding smp_bind{};
+    smp_bind.binding = 1;
+    smp_bind.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    smp_bind.descriptorCount = 1;
+    smp_bind.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
-    CreateCommonSampler(device);
+    std::array<vk::DescriptorSetLayoutBinding, 2> binds = {ub_bind, smp_bind};
+    vk::DescriptorSetLayoutCreateInfo dsl_ci{};
+    dsl_ci.bindingCount = 2;
+    dsl_ci.pBindings = binds.data();
+    return vk::raii::DescriptorSetLayout{device, dsl_ci};
+  }
+  vk::raii::DescriptorPool TerrainPass::CreateDescriptorPool(const vk::raii::Device &device, const int image_count)
+  {
+    uint32_t total_sets = image_count;
+    std::array<vk::DescriptorPoolSize, 2> ps{};
+    ps[0] = {vk::DescriptorType::eUniformBuffer, total_sets};
+    ps[1] = {vk::DescriptorType::eCombinedImageSampler, total_sets};
 
+    vk::DescriptorPoolCreateInfo dp_ci{};
+    dp_ci.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+    dp_ci.maxSets = total_sets;
+    dp_ci.poolSizeCount = 2;
+    dp_ci.pPoolSizes = ps.data();
+    return vk::raii::DescriptorPool{device, dp_ci};
+  }
+
+  void TerrainPass::CreateUniformBuffers(
+      const VkContext &ctx,
+      const vk::PhysicalDeviceMemoryProperties &mem_props,
+      uint32_t image_count)
+  {
+    // 预留空间，防止 vector 频繁扩容（提高效率）
+    ubo_buf_.reserve(image_count);
+    ubo_mem_.reserve(image_count);
+    ubo_map_.resize(image_count, nullptr); // 假设 ubo_map_ 是 std::vector<void*>
+
+    for (uint32_t i = 0; i < image_count; ++i)
     {
-      vk::DescriptorSetLayoutBinding ub_bind{};
-      ub_bind.binding = 0;
-      ub_bind.descriptorType = vk::DescriptorType::eUniformBuffer;
-      ub_bind.descriptorCount = 1;
-      ub_bind.stageFlags = vk::ShaderStageFlagBits::eVertex;
+      // 1. 创建 Buffer 对象
+      vk::BufferCreateInfo u_ci{};
+      u_ci.size = sizeof(CameraUBO);
+      u_ci.usage = vk::BufferUsageFlagBits::eUniformBuffer;
+      ubo_buf_.emplace_back(ctx.Device(), u_ci);
 
-      vk::DescriptorSetLayoutBinding smp_bind{};
-      smp_bind.binding = 1;
-      smp_bind.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-      smp_bind.descriptorCount = 1;
-      smp_bind.stageFlags = vk::ShaderStageFlagBits::eFragment;
+      // 2. 获取内存需求并分配内存
+      auto req = ubo_buf_.back().getMemoryRequirements();
+      vk::MemoryAllocateInfo u_mai{};
+      u_mai.allocationSize = req.size;
 
-      std::array<vk::DescriptorSetLayoutBinding, 2> binds = {ub_bind, smp_bind};
-      vk::DescriptorSetLayoutCreateInfo dsl_ci{};
-      dsl_ci.bindingCount = 2;
-      dsl_ci.pBindings = binds.data();
-      dsl_ = vk::raii::DescriptorSetLayout{device, dsl_ci};
+      // 查找支持 CPU 写入 (HostVisible) 且 自动刷新缓存 (HostCoherent) 的内存
+      u_mai.memoryTypeIndex = FindMemoryType(
+          ctx.PhysicalDevice(),
+          req.memoryTypeBits,
+          vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-      uint32_t image_count = swapchain.ImageCount();
-      uint32_t total_sets = image_count;
-      std::array<vk::DescriptorPoolSize, 2> ps{};
-      ps[0] = {vk::DescriptorType::eUniformBuffer, total_sets};
-      ps[1] = {vk::DescriptorType::eCombinedImageSampler, total_sets};
+      // 创建 DeviceMemory 并推入容器
+      ubo_mem_.emplace_back(ctx.Device(), u_mai);
 
-      vk::DescriptorPoolCreateInfo dp_ci{};
-      dp_ci.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-      dp_ci.maxSets = total_sets;
-      dp_ci.poolSizeCount = 2;
-      dp_ci.pPoolSizes = ps.data();
-      dp_ = vk::raii::DescriptorPool{device, dp_ci};
+      // 3. 绑定内存到 Buffer
+      ubo_buf_.back().bindMemory(*ubo_mem_.back(), 0);
 
-      std::vector<vk::DescriptorSetLayout> layouts(total_sets, *dsl_);
-      vk::DescriptorSetAllocateInfo ds_ai{};
-      ds_ai.descriptorPool = *dp_;
-      ds_ai.descriptorSetCount = total_sets;
-      ds_ai.pSetLayouts = layouts.data();
-      ds_ = device.allocateDescriptorSets(ds_ai);
+      // 4. 执行持久化映射 (Persistent Mapping)
+      // 映射后指针存入 ubo_map_，之后每帧更新数据只需 memcpy，无需重复 map/unmap
+      ubo_map_[i] = ubo_mem_.back().mapMemory(0, sizeof(CameraUBO));
+    }
+  }
 
-      ubo_buf_.reserve(image_count);
-      ubo_mem_.reserve(image_count);
-      ubo_map_.resize(image_count, nullptr);
+  void TerrainPass::UpdateDescriptorSets(const vk::raii::Device &device, uint32_t image_count)
+  {
+    for (uint32_t i = 0; i < image_count; ++i)
+    {
 
-      // 获取内存属性供 FindMemoryType 使用
-      auto const mem_props = ctx.PhysicalDevice().getMemoryProperties();
-
-      for (uint32_t i = 0; i < image_count; ++i)
+      for (uint32_t m = 0; m < textures_.size(); ++m)
       {
-        // 1. 创建 Uniform Buffer
-        vk::BufferCreateInfo u_ci{};
-        u_ci.size = sizeof(CameraUBO);
-        u_ci.usage = vk::BufferUsageFlagBits::eUniformBuffer;
-        ubo_buf_.push_back(vk::raii::Buffer{device, u_ci});
-
-        // 2. 分配并绑定内存 (HostVisible 确保 CPU 可写)
-        auto req = ubo_buf_.back().getMemoryRequirements();
-        vk::MemoryAllocateInfo u_mai{};
-        u_mai.allocationSize = req.size;
-        u_mai.memoryTypeIndex = FindMemoryType(mem_props, req.memoryTypeBits,
-                                               vk::MemoryPropertyFlagBits::eHostVisible |
-                                                   vk::MemoryPropertyFlagBits::eHostCoherent);
-
-        ubo_mem_.push_back(vk::raii::DeviceMemory{device, u_mai});
-        ubo_buf_.back().bindMemory(*ubo_mem_.back(), 0);
-
-        // 3. 映射内存，拿到 CPU 端指针 ubo_map_[i]
-        ubo_map_[i] = ubo_mem_.back().mapMemory(0, sizeof(CameraUBO));
-
-        // 4. 更新描述符集 (只更新 Binding 0)
         vk::DescriptorBufferInfo bi{*ubo_buf_[i], 0, sizeof(CameraUBO)};
-
-        vk::DescriptorImageInfo ii{*common_sampler_, *textures_[0].view, vk::ImageLayout::eShaderReadOnlyOptimal};
+        vk::DescriptorImageInfo ii{*common_sampler_, *textures_[m].view, vk::ImageLayout::eShaderReadOnlyOptimal};
 
         vk::WriteDescriptorSet w_ubo{};
         w_ubo.dstSet = *ds_[i];
@@ -254,48 +180,72 @@ namespace vkfw
         w_smp.descriptorType = vk::DescriptorType::eCombinedImageSampler;
         w_smp.pImageInfo = &ii;
 
-        // 执行更新
         device.updateDescriptorSets({w_ubo, w_smp}, {});
       }
     }
+  }
 
+  void TerrainPass::CreatePipeline(
+      const vk::raii::Device &device,
+      const std::string &shader_path,
+      vk::Format color_format,
+      vk::Format depth_format)
+  {
+    // 1. 加载并创建着色器模块
+    // 注意：shader_module 是局部变量，但在函数结束前管线已经创建完成，所以没问题
+    auto const code = ReadFile(shader_path);
+    vk::ShaderModuleCreateInfo sm_ci{};
+    sm_ci.codeSize = code.size();
+    sm_ci.pCode = reinterpret_cast<uint32_t const *>(code.data());
+    vk::raii::ShaderModule shader_module{device, sm_ci};
+
+    // 2. 着色器阶段配置
+    // 注意：Vert 和 Frag 在同一个 SPV 里（你的代码是这么写的）
     vk::PipelineShaderStageCreateInfo stages[2]{};
     stages[0].stage = vk::ShaderStageFlagBits::eVertex;
     stages[0].module = *shader_module;
     stages[0].pName = "vertMain";
+
     stages[1].stage = vk::ShaderStageFlagBits::eFragment;
     stages[1].module = *shader_module;
     stages[1].pName = "fragMain";
 
-    auto binding = vkfw::getBindingDescription();
-    auto attrs = vkfw::AttrDescs();
+    // 3. 顶点输入 (Vertex Input)
+    auto binding = VertexBindingDescriptions();
+    auto attrs = VertexAttributeDescriptions();
     vk::PipelineVertexInputStateCreateInfo vi{};
     vi.vertexBindingDescriptionCount = 1;
-    vi.pVertexBindingDescriptions = &binding;
+    vi.pVertexBindingDescriptions = binding.data();
     vi.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrs.size());
     vi.pVertexAttributeDescriptions = attrs.data();
 
+    // 4. 输入装配 (Input Assembly)
     vk::PipelineInputAssemblyStateCreateInfo ia{};
     ia.topology = vk::PrimitiveTopology::eTriangleList;
 
+    // 5. 视口与裁剪 (使用动态状态，所以这里只需指定数量)
     vk::PipelineViewportStateCreateInfo vp_state{};
     vp_state.viewportCount = 1;
     vp_state.scissorCount = 1;
 
+    // 6. 光栅化 (Rasterization)
     vk::PipelineRasterizationStateCreateInfo rs{};
     rs.polygonMode = vk::PolygonMode::eFill;
     rs.cullMode = vk::CullModeFlagBits::eNone;
     rs.frontFace = vk::FrontFace::eClockwise;
     rs.lineWidth = 1.0f;
 
+    // 7. 深度测试 (Depth Stencil)
     vk::PipelineDepthStencilStateCreateInfo dss{};
     dss.depthTestEnable = 1;
     dss.depthWriteEnable = 1;
     dss.depthCompareOp = vk::CompareOp::eLess;
 
+    // 8. 多重采样 (Multisample)
     vk::PipelineMultisampleStateCreateInfo ms{};
     ms.rasterizationSamples = vk::SampleCountFlagBits::e1;
 
+    // 9. 颜色混合 (Color Blend)
     vk::PipelineColorBlendAttachmentState cb_att{};
     cb_att.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                             vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
@@ -303,27 +253,32 @@ namespace vkfw
     cb.attachmentCount = 1;
     cb.pAttachments = &cb_att;
 
+    // 10. 动态状态 (Dynamic State)
     std::array<vk::DynamicState, 2> dyn{vk::DynamicState::eViewport, vk::DynamicState::eScissor};
     vk::PipelineDynamicStateCreateInfo dyn_ci{};
     dyn_ci.dynamicStateCount = static_cast<uint32_t>(dyn.size());
     dyn_ci.pDynamicStates = dyn.data();
 
+    // 11. 管线布局 (Pipeline Layout)
+    // 假设 dsl_ 已经在外部初始化好了
     vk::PipelineLayoutCreateInfo pl_ci{};
     vk::DescriptorSetLayout raw_dsl = *dsl_;
     pl_ci.setLayoutCount = 1;
     pl_ci.pSetLayouts = &raw_dsl;
     pipeline_layout_ = vk::raii::PipelineLayout{device, pl_ci};
 
-    vk::Format const color_format = swapchain.Format();
-
+    // 12. 动态渲染信息 (Rendering Create Info - KHR_dynamic_rendering)
     vk::PipelineRenderingCreateInfo rendering_ci{};
     rendering_ci.colorAttachmentCount = 1;
     rendering_ci.pColorAttachmentFormats = &color_format;
-    if (targets.shared_depth.Valid())
-      rendering_ci.depthAttachmentFormat = targets.shared_depth.format;
+    if (depth_format != vk::Format::eUndefined)
+    {
+      rendering_ci.depthAttachmentFormat = depth_format;
+    }
 
+    // 13. 创建图形管线
     vk::GraphicsPipelineCreateInfo gp_ci{};
-    gp_ci.pNext = &rendering_ci;
+    gp_ci.pNext = &rendering_ci; // 关键：指向动态渲染配置
     gp_ci.stageCount = 2;
     gp_ci.pStages = stages;
     gp_ci.pVertexInputState = &vi;
@@ -331,58 +286,98 @@ namespace vkfw
     gp_ci.pViewportState = &vp_state;
     gp_ci.pRasterizationState = &rs;
     gp_ci.pMultisampleState = &ms;
-    gp_ci.pDepthStencilState = targets.shared_depth.Valid() ? &dss : nullptr;
+    gp_ci.pDepthStencilState = (depth_format != vk::Format::eUndefined) ? &dss : nullptr;
     gp_ci.pColorBlendState = &cb;
     gp_ci.pDynamicState = &dyn_ci;
     gp_ci.layout = *pipeline_layout_;
-    gp_ci.renderPass = nullptr;
+    gp_ci.renderPass = nullptr; // 使用动态渲染时设为 nullptr
 
+    // 赋值给成员变量 pipeline_
     pipeline_ = vk::raii::Pipeline{device, nullptr, gp_ci};
+  }
 
+  void TerrainPass::CreateVertexBuffer(
+      const VkContext &ctx,
+      const vk::PhysicalDeviceMemoryProperties &mem_props,
+      const Model &model)
+  {
+    vk::BufferCreateInfo bci{};
+
+    bci.size = model.vertices.size() * sizeof(model.vertices[0]);
+    bci.usage = vk::BufferUsageFlagBits::eVertexBuffer;
+    bci.sharingMode = vk::SharingMode::eExclusive;
+    vertex_buffer_ = vk::raii::Buffer{ctx.Device(), bci};
+
+    auto req = vertex_buffer_.getMemoryRequirements();
+    vk::MemoryAllocateInfo mai{};
+    mai.allocationSize = req.size;
+    mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), req.memoryTypeBits,
+                                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    vertex_memory_ = vk::raii::DeviceMemory{ctx.Device(), mai};
+    vertex_buffer_.bindMemory(*vertex_memory_, 0);
+
+    void *dst = vertex_memory_.mapMemory(0, bci.size);
+    std::memcpy(dst, model.vertices.data(), bci.size);
+    vertex_memory_.unmapMemory();
+  }
+
+  void TerrainPass::CreateIndexBuffer(
+      const VkContext &ctx,
+      const vk::PhysicalDeviceMemoryProperties &mem_props,
+      const Model &model)
+  {
+    vk::BufferCreateInfo bci{};
+
+    bci.size = sizeof(model.indices[0]) * model.indices.size();
+    bci.usage = vk::BufferUsageFlagBits::eIndexBuffer;
+    bci.sharingMode = vk::SharingMode::eExclusive;
+    index_buffer_ = vk::raii::Buffer{ctx.Device(), bci};
+
+    auto req = index_buffer_.getMemoryRequirements();
+    vk::MemoryAllocateInfo mai{};
+    mai.allocationSize = req.size;
+    mai.memoryTypeIndex = FindMemoryType(ctx.PhysicalDevice(), req.memoryTypeBits,
+                                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    index_memory_ = vk::raii::DeviceMemory{ctx.Device(), mai};
+    index_buffer_.bindMemory(*index_memory_, 0);
+
+    void *dst = index_memory_.mapMemory(0, bci.size);
+    std::memcpy(dst, model.indices.data(), bci.size);
+    index_memory_.unmapMemory();
+  }
+
+  bool TerrainPass::Create(VkContext &ctx, VkSwapchain const &swapchain, RenderTargets &targets)
+  {
+    auto &device = ctx.Device();
+    // 获取内存属性供 FindMemoryType 使用
     auto const mem_props = ctx.PhysicalDevice().getMemoryProperties();
 
     {
-      vk::BufferCreateInfo bci{};
-
-      bci.size = terrtain_.vertices.size() * sizeof(terrtain_.vertices[0]);
-      bci.usage = vk::BufferUsageFlagBits::eVertexBuffer;
-      bci.sharingMode = vk::SharingMode::eExclusive;
-      vertex_buffer_ = vk::raii::Buffer{device, bci};
-
-      auto req = vertex_buffer_.getMemoryRequirements();
-      vk::MemoryAllocateInfo mai{};
-      mai.allocationSize = req.size;
-      mai.memoryTypeIndex = FindMemoryType(mem_props, req.memoryTypeBits,
-                                           vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-      vertex_memory_ = vk::raii::DeviceMemory{device, mai};
-      vertex_buffer_.bindMemory(*vertex_memory_, 0);
-
-      void *dst = vertex_memory_.mapMemory(0, bci.size);
-      std::memcpy(dst, terrtain_.vertices.data(), bci.size);
-      vertex_memory_.unmapMemory();
+      terrtain_ = createQuad(500.0f, 500.0f, 1000, 1000);
+      CreateVertexBuffer(ctx, mem_props, terrtain_);
+      CreateIndexBuffer(ctx, mem_props, terrtain_);
     }
+
+    // 加载纹理 texture_
+    LoadTexture(ctx, "res/forested-floor/textures/KiplingerFLOOR.png", 0);
+    CreateCommonSampler(device);
+    int image_count = swapchain.ImageCount();
+    int total_sets = image_count * textures_.size(); // 每个 swapchain image 需要一个描述符集，且每个描述符集包含所有纹理
 
     {
-      vk::BufferCreateInfo bci{};
-
-      bci.size = sizeof(terrtain_.indices[0]) * terrtain_.indices.size();
-      bci.usage = vk::BufferUsageFlagBits::eIndexBuffer;
-      bci.sharingMode = vk::SharingMode::eExclusive;
-      index_buffer_ = vk::raii::Buffer{device, bci};
-
-      auto req = index_buffer_.getMemoryRequirements();
-      vk::MemoryAllocateInfo mai{};
-      mai.allocationSize = req.size;
-      mai.memoryTypeIndex = FindMemoryType(mem_props, req.memoryTypeBits,
-                                           vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-      index_memory_ = vk::raii::DeviceMemory{device, mai};
-      index_buffer_.bindMemory(*index_memory_, 0);
-
-      void *dst = index_memory_.mapMemory(0, bci.size);
-      std::memcpy(dst, terrtain_.indices.data(), bci.size);
-      index_memory_.unmapMemory();
+      dsl_ = CreateDescriptorSetLayout(device);       // define Descriptor Layout
+      dp_ = CreateDescriptorPool(device, total_sets); // size of layout; each swapchain image need one set(Descriptor Layout)
+      std::vector<vk::DescriptorSetLayout> layouts(total_sets, *dsl_);
+      vk::DescriptorSetAllocateInfo ds_ai{};
+      ds_ai.descriptorPool = *dp_;
+      ds_ai.descriptorSetCount = total_sets;
+      ds_ai.pSetLayouts = layouts.data();
+      ds_ = device.allocateDescriptorSets(ds_ai);
+      CreateUniformBuffers(ctx, mem_props, image_count);
+      UpdateDescriptorSets(device, image_count);
     }
 
+    CreatePipeline(device, "res/vk/terrain.spv", swapchain.Format(), targets.shared_depth.format);
     return true;
   }
 
@@ -431,6 +426,7 @@ namespace vkfw
     CameraUBO ubo{};
     ubo.view = frame.globals->view;
     ubo.proj = frame.globals->proj;
+    ubo.light = frame.globals->light;
     ubo.model = glm::mat4(1.0f);
     ubo.camera_pos = glm::vec4(frame.globals->camera_pos, 1.0f);
 
@@ -487,20 +483,13 @@ namespace vkfw
       );
     }
 
-    // float t = 0.0f;
-    // cmd.pushConstants<float>(*pipeline_layout_, vk::ShaderStageFlagBits::eFragment, 0, t);
     cmd.drawIndexed(static_cast<uint32_t>(terrtain_.indices.size()), 1, 0, 0, 0);
     cmd.endRendering();
 
     // Transition to present.
-    TransitionImage(cmd,
-                    frame.swapchain_image,
-                    vk::ImageLayout::eColorAttachmentOptimal,
-                    vk::ImageLayout::ePresentSrcKHR,
-                    vk::AccessFlagBits2::eColorAttachmentWrite,
-                    {},
-                    vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-                    vk::PipelineStageFlagBits2::eBottomOfPipe);
+    TransitionImage(cmd, frame.swapchain_image, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
+                    vk::ImageAspectFlagBits::eColor, vk::AccessFlagBits2::eColorAttachmentWrite, {},
+                    vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eBottomOfPipe);
   }
 
   void TerrainPass::updateVertexBuffer()
